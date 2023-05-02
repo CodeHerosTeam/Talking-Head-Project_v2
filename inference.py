@@ -7,6 +7,9 @@ from glob import glob
 import torch, face_detection
 from models import Wav2Lip
 import platform
+from moviepy.editor import *
+from pydub import AudioSegment, silence
+
 
 parser = argparse.ArgumentParser(description='Inference code to lip-sync videos in the wild using Wav2Lip models')
 
@@ -177,7 +180,51 @@ def load_model(path):
 
 	model = model.to(device)
 	return model.eval()
+def process_dub():
+  from pydub import AudioSegment, silence
+  myaudio = AudioSegment.from_file("/content/Talking-Head-Project_v2/input/generated_text.wav",'wav')
 
+  silence = silence.detect_silence(myaudio, min_silence_len=700, silence_thresh=-60 )
+
+  silence = [((start/1000),(stop/1000)) for start,stop in silence] #convert to sec
+  last = myaudio.duration_seconds
+ 
+  
+
+  
+  sound = VideoFileClip('/content/Talking-Head-Project_v2/utils/utils/utils/withsound.mp4')
+  no_sound = VideoFileClip('/content/Talking-Head-Project_v2/utils/utils/utils/nohsound.mp4')
+    
+  clip_list = []
+  init=0
+  for block in silence:
+    len1 = block[0] - init
+    clip1= sound.subclip(0,len1) 
+    clip_list.append(clip1)
+    len2 = block[1] - block[0]
+    clip2= no_sound.subclip(0,len2)
+    clip_list.append(clip2)
+    init = block[1]
+
+  final_len = last - init
+  final_clip = sound.subclip(0,final_len) 
+  clip_list.append(final_clip)
+
+   
+
+
+  final = concatenate_videoclips(clip_list,method='compose')
+
+
+  final.write_videofile("/content/Talking-Head-Project_v2/utils/utils/utils/output.mp4")
+
+   
+   
+  video_clip = VideoFileClip("/content/Talking-Head-Project_v2/utils/utils/utils/output.mp4")
+  audio_clip = AudioFileClip("/content/Talking-Head-Project_v2/input/generated_text.wav")
+
+  final_clip = video_clip.set_audio(audio_clip)
+  final_clip.write_videofile("/content/Talking-Head-Project_v2/results/Finaloutput" + ".mp4")
 def main():
 	if not os.path.isfile(args.face):
 		raise ValueError('--face argument must be a valid path to video/image file')
@@ -246,6 +293,7 @@ def main():
 	batch_size = args.wav2lip_batch_size
 	gen = datagen(full_frames.copy(), mel_chunks)
 
+
 	for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen, 
 											total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
 		if i == 0:
@@ -270,8 +318,12 @@ def main():
 
 			f[y1:y2, x1:x2] = p
 			out.write(f)
+	process_dub()
 
 	out.release()
+
+
+  
 
 	command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(args.audio, 'temp/result.avi', args.outfile)
 	subprocess.call(command, shell=platform.system() != 'Windows')
